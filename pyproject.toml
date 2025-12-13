@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecc"
+version = "0.1.0"
+description = "Engagement Clip Creator (ECC) — pipeline for turning long-form videos into 30–45s shorts."
+authors = [{ name = "Sneh P."}]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "typer[all]>=0.9",
+  "pydantic>=2.6",
+  "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+]
+
+[project.scripts]
+ecc = "ecc.app.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ecc*"]

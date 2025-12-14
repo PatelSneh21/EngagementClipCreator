@@ -19,6 +19,9 @@ dependencies = [
 dev = [
   "pytest>=7.4",
 ]
+asr = [
+  "faster-whisper>=0.10",
+]
 
 [project.scripts]
 ecc = "ecc.app.cli:app"

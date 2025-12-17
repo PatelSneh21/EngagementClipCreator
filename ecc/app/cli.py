@@ -10,10 +10,15 @@ from rich.console import Console
 from ecc.asr.transcribe import transcribe_audio
 from ecc.ingest.extract_audio import extract_audio
 from ecc.ingest.media_probe import probe_media
+from ecc.moments.features import extract_features
+from ecc.moments.score import score_candidate
+from ecc.moments.scored_schema import ScoredCandidate
+from ecc.moments.select import select_clips
 from ecc.segmentation.build_candidates import (
     build_candidate_segments,
     write_candidates,
 )
+from ecc.segmentation.candidate_schema import CandidateSegment
 from ecc.segmentation.scene_detect import detect_scenes
 
 app = typer.Typer(help="Engagement Clip Creator CLI skeleton")
@@ -240,6 +245,82 @@ def build_candidates_cmd(
     console.print(f"[green]Run:[/] {run_path}")
     console.print(f"Candidates built: {len(candidates)}")
     console.print(f"Candidates written to: {output_path}")
+
+
+@app.command(name="select-candidates")
+def select_candidates_cmd(
+    run_id: str = typer.Option(
+        ..., help="Run id whose candidates to score and select (runs/<run_id>/)."
+    ),
+    runs_dir: Path = typer.Option(
+        Path("runs"), help="Directory where run artifacts are stored."
+    ),
+    candidates_path: Path | None = typer.Option(
+        None, help="Optional candidates.json path. Defaults to runs/<run_id>/candidates.json"
+    ),
+    scored_path: Path | None = typer.Option(
+        None,
+        help="Optional scored output path. Defaults to runs/<run_id>/candidates_scored.json",
+    ),
+    selected_path: Path | None = typer.Option(
+        None,
+        help="Optional selected output path. Defaults to runs/<run_id>/selected.json",
+    ),
+    target_min_sec: int = typer.Option(30, help="Minimum total duration (seconds)."),
+    target_max_sec: int = typer.Option(45, help="Maximum total duration (seconds)."),
+    max_candidates: int = typer.Option(12, help="Max number of clips to select."),
+) -> None:
+    """Score candidates and select a subset within the target duration window."""
+    run_path = _ensure_runs_dir(runs_dir) / run_id
+    candidates_file = candidates_path or (run_path / "candidates.json")
+    scored_file = scored_path or (run_path / "candidates_scored.json")
+    selected_file = selected_path or (run_path / "selected.json")
+
+    try:
+        raw = json.loads(candidates_file.read_text(encoding="utf-8"))
+        candidates = [CandidateSegment.model_validate(item) for item in raw]
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Failed to load candidates:[/] {exc}")
+        raise typer.Exit(code=1)
+
+    scored: list[ScoredCandidate] = []
+    for cand in candidates:
+        data = cand.model_dump()
+        features = extract_features(data)
+        score = score_candidate(data)
+        scored.append(
+            ScoredCandidate(
+                **data,
+                score=score,
+                features={k: float(v) for k, v in features.items()},
+            )
+        )
+
+    scored_file.parent.mkdir(parents=True, exist_ok=True)
+    scored_file.write_text(
+        json.dumps([c.model_dump() for c in scored], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    selected = select_clips(
+        [c.model_dump() for c in scored],
+        target_min_sec=target_min_sec,
+        target_max_sec=target_max_sec,
+        max_candidates=max_candidates,
+    )
+
+    selected_file.parent.mkdir(parents=True, exist_ok=True)
+    selected_file.write_text(
+        json.dumps(selected, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    total_ms = sum(int(c.get("duration_ms", 0)) for c in selected)
+    console.print(f"[green]Run:[/] {run_path}")
+    console.print(f"Scored candidates: {len(scored)}")
+    console.print(f"Selected candidates: {len(selected)}")
+    console.print(f"Total duration: {total_ms / 1000:.2f}s")
+    console.print(f"Scored written to: {scored_file}")
+    console.print(f"Selected written to: {selected_file}")
 
 
 # Run entire workflow using `ecc run-ecc-workflow path/to/video.mp4 --run-id demo --model-size small`

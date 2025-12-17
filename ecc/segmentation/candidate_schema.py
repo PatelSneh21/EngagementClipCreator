@@ -13,3 +13,8 @@ class CandidateSegment(BaseModel):
     start_ms: int = Field(..., ge=0, description="Start time of the candidate in ms.")
     end_ms: int = Field(..., ge=0, description="End time of the candidate in ms.")
     text: str = Field(..., min_length=1, description="Concatenated transcript text for the scene.")
+    duration_ms: int = Field(..., ge=1, description="Duration of the candidate in ms.")
+    word_count: int = Field(..., ge=0, description="Approximate word count for text.")
+    segment_count: int = Field(
+        ..., ge=1, description="Number of transcript segments used."
+    )
